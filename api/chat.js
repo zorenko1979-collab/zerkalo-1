@@ -1,27 +1,47 @@
+
+import { createHash, timingSafeEqual } from "node:crypto";
+
+const digest = value =>
+  createHash("sha256").update(value).digest();
+
 export default async function handler(req, res) {
+  res.setHeader("Cache-Control", "no-store");
+
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Метод не поддерживается" });
   }
 
-  if (!process.env.OPENAI_API_KEY) {
-    return res.status(500).json({ error: "API-ключ не настроен" });
+  const key = process.env.OPENAI_API_KEY;
+  const accessCode = process.env.ZERKALO_ACCESS_CODE;
+
+  if (!key || !accessCode || accessCode.length < 20) {
+    return res.status(503).json({ error: "Сервер не настроен" });
+  }
+
+  const supplied = req.headers["x-zerkalo-access-code"];
+
+  if (
+    typeof supplied !== "string" ||
+    !timingSafeEqual(digest(supplied), digest(accessCode))
+  ) {
+    return res.status(401).json({ error: "Неверный код доступа" });
+  }
+
+  const { message } = req.body || {};
+
+  if (typeof message !== "string" || !message.trim()) {
+    return res.status(400).json({ error: "Введите сообщение" });
+  }
+
+  if (message.length > 4000) {
+    return res.status(400).json({ error: "Сообщение слишком длинное" });
   }
 
   try {
-    const { message } = req.body || {};
-
-    if (typeof message !== "string" || !message.trim()) {
-      return res.status(400).json({ error: "Введите сообщение" });
-    }
-
-    if (message.length > 4000) {
-      return res.status(400).json({ error: "Сообщение слишком длинное" });
-    }
-
     const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        Authorization: `Bearer ${key}`,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
@@ -32,14 +52,19 @@ export default async function handler(req, res) {
 Разделяй наблюдения и предположения.
 Не анализируй человека без его запроса.
 Задавай вопросы только когда они полезны.`,
-        input: message,
+        input: message.trim(),
         max_output_tokens: 600
       })
     });
 
     if (!response.ok) {
+      if (response.status === 429) {
+        return res.status(502).json({
+          error: "Проверь баланс и лимиты OpenAI API"
+        });
+      }
       return res.status(502).json({
-        error: "Не удалось получить ответ от ИИ"
+        error: "OpenAI не принял запрос"
       });
     }
 
@@ -55,8 +80,8 @@ export default async function handler(req, res) {
       reply: reply || "Ответ не получен"
     });
   } catch (error) {
-    return res.status(500).json({
-      error: "Ошибка сервера"
+    return res.status(502).json({
+      error: "Не удалось связаться с OpenAI"
     });
   }
 }
