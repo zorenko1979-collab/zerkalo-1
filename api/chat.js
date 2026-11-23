@@ -80,6 +80,7 @@ export default async function handler(req, res) {
       reply: reply || "Ответ не получен"
     });
   } catch (error) {
+    console.error('ZERKALO_OPENAI_CONNECT', error?.name, error?.message, error?.cause?.code);
     return res.status(502).json({
       error: "Не удалось связаться с OpenAI"
     });
