@@ -107,8 +107,7 @@ $('chatsend').onclick=async()=>{
   $('chatstatus').textContent='ЗЕРКАЛО думает…';
   try{
     const response=await fetch('/api/chat',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','X-Zerkalo-Access-Code':prompt('Введи личный код доступа к ЗЕРКАЛУ:')},
+      headers:{'Content-Type':'application/json','X-Zerkalo-Access-Code':(window.zerkaloCode ||= prompt('Введи личный код доступа к ЗЕРКАЛУ:') || '')},
       body:JSON.stringify({message})
     });
     const data=await response.json();
