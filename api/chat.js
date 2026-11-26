@@ -1,4 +1,5 @@
 
+
 import { createHash, timingSafeEqual } from "node:crypto";
 
 const digest = value =>
@@ -27,7 +28,7 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: "Неверный код доступа" });
   }
 
-  const { message } = req.body || {};
+  const { message, history } = req.body || {};
 
   if (typeof message !== "string" || !message.trim()) {
     return res.status(400).json({ error: "Введите сообщение" });
@@ -36,6 +37,25 @@ export default async function handler(req, res) {
   if (message.length > 4000) {
     return res.status(400).json({ error: "Сообщение слишком длинное" });
   }
+
+  const context = Array.isArray(history)
+    ? history.slice(-12)
+        .filter(item =>
+          item &&
+          ["user", "assistant"].includes(item.role) &&
+          typeof item.content === "string" &&
+          item.content.trim()
+        )
+        .map(item => ({
+          role: item.role,
+          content: item.content.slice(0, 4000)
+        }))
+    : [];
+
+  context.push({
+    role: "user",
+    content: message.trim()
+  });
 
   try {
     const response = await fetch("https://api.openai.com/v1/responses", {
@@ -46,13 +66,17 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         model: "gpt-4.1-mini",
+        store: false,
         instructions: `Ты — ЗЕРКАЛО, цифровой спутник человека.
 Общайся естественно, тепло и прямо, на русском языке.
+Учитывай предыдущие сообщения разговора.
+Не заставляй человека повторять то, что он уже рассказал.
 Не льсти и не придумывай факты.
 Разделяй наблюдения и предположения.
 Не анализируй человека без его запроса.
-Задавай вопросы только когда они полезны.`,
-        input: message.trim(),
+Задавай вопросы только когда они полезны.
+Помогай человеку увидеть себя, но не навязывай выводы.`,
+        input: context,
         max_output_tokens: 600
       })
     });
@@ -80,10 +104,9 @@ export default async function handler(req, res) {
       reply: reply || "Ответ не получен"
     });
   } catch (error) {
-    console.error('ZERKALO_OPENAI_CONNECT', error?.name, error?.message, error?.cause?.code);
+    console.error("ZERKALO_CONNECT", error?.name);
     return res.status(502).json({
-    
-  error: "Ошибка: " + (error?.cause?.code || error?.message || "неизвестная")
+      error: "Не удалось связаться с OpenAI"
     });
   }
 }
