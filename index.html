@@ -1,4 +1,5 @@
 
+
 <!doctype html>
 <html lang="ru">
 <head>
@@ -52,7 +53,7 @@ textarea{width:100%;height:105px;margin-top:10px;border-radius:15px;border:1px s
       <div id="chatlog" class="chatlog" aria-live="polite"></div>
       <textarea id="chatmessage" maxlength="4000" placeholder="О чём поговорим?"></textarea>
       <button id="chatsend">Отправить сообщение</button>
-      <div class="small" id="chatstatus" role="status">Это пробный диалог. История чата пока не сохраняется.</div>
+      <div class="small" id="chatstatus" role="status">Помню текущий разговор. После обновления страницы память очищается.</div>
     </section>
     <div class="row">
       <button id="voice">🎙️ Сказать</button>
@@ -90,8 +91,9 @@ const KEY='zerkalo1_entries';
 const $=id=>document.getElementById(id);
 let entries=[];
 
-// Пробная версия чата: отправляется только текущее сообщение.
-// Записи дневника и история разговора не передаются автоматически.
+let chatHistory=[];
+let chatAccessCode='';
+
 function chatBubble(kind,text){
   const element=document.createElement('div');
   element.className='bubble '+kind;
@@ -102,21 +104,62 @@ function chatBubble(kind,text){
 
 $('chatsend').onclick=async()=>{
   const message=$('chatmessage').value.trim();
-  if(!message)return;
+  if(!message||$('chatsend').disabled)return;
+
+  if(!chatAccessCode){
+    const code=prompt('Введи личный код доступа к ЗЕРКАЛУ:');
+    if(!code)return;
+    chatAccessCode=code;
+  }
+
   $('chatsend').disabled=true;
   $('chatstatus').textContent='ЗЕРКАЛО думает…';
+
   try{
     const response=await fetch('/api/chat',{
       method:'POST',
-      headers:{'Content-Type':'application/json','X-Zerkalo-Access-Code':(window.zerkaloCode ||= prompt('Введи личный код доступа к ЗЕРКАЛУ:') || '')},
-      body:JSON.stringify({message})
+      headers:{
+        'Content-Type':'application/json',
+        'X-Zerkalo-Access-Code':chatAccessCode
+      },
+      body:JSON.stringify({
+        message,
+        history:chatHistory.slice(-12)
+      })
     });
-    const data=await response.json();
-    if(!response.ok)throw new Error(data.error||'Ошибка соединения');
+
+    if(response.status===401){
+      chatAccessCode='';
+    }
+
+    const data=await response.json().catch(()=>null);
+
+    if(!response.ok){
+      throw new Error(data?.error||'Ошибка сервера: '+response.status);
+    }
+
+    if(typeof data?.reply!=='string'||!data.reply.trim()){
+      throw new Error('Ответ не получен');
+    }
+
+    const reply=data.reply;
+
     chatBubble('me',message);
-    chatBubble('ai',data.reply||'Ответ не получен.');
-    $('chatmessage').value='';
-    $('chatstatus').textContent='Диалог пока без долговременной памяти.';
+    chatBubble('ai',reply);
+
+    chatHistory.push(
+      {role:'user',content:message},
+      {role:'assistant',content:reply}
+    );
+
+    chatHistory=chatHistory.slice(-12);
+
+    if($('chatmessage').value.trim()===message){
+      $('chatmessage').value='';
+    }
+
+    $('chatstatus').textContent='Помню последние 12 сообщений до обновления страницы.';
+
   }catch(e){
     $('chatstatus').textContent='Не удалось получить ответ: '+e.message;
   }finally{
@@ -358,3 +401,4 @@ render();
 </script>
 </body>
 </html>
+
