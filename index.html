@@ -166,7 +166,7 @@ $('chatsend').onclick=async()=>{
     chatHistory.push(
       {role:'user',content:message},
       {role:'assistant',content:reply}
-  
+  );
 chatHistory=chatHistory.slice(-200);
 
 try{
