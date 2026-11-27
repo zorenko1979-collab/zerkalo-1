@@ -91,7 +91,23 @@ const KEY='zerkalo1_entries';
 const $=id=>document.getElementById(id);
 let entries=[];
 
+
+const CHAT_KEY='zerkalo1_chat';
 let chatHistory=[];
+
+try{
+  const saved=JSON.parse(localStorage.getItem(CHAT_KEY)||'[]');
+  if(Array.isArray(saved)){
+    chatHistory=saved.filter(item=>
+      item&&
+      ['user','assistant'].includes(item.role)&&
+      typeof item.content==='string'
+    ).slice(-200);
+  }
+}catch(e){
+  chatHistory=[];
+}
+
 let chatAccessCode='';
 
 function chatBubble(kind,text){
@@ -150,9 +166,15 @@ $('chatsend').onclick=async()=>{
     chatHistory.push(
       {role:'user',content:message},
       {role:'assistant',content:reply}
-    );
+  
+chatHistory=chatHistory.slice(-200);
 
-    chatHistory=chatHistory.slice(-12);
+try{
+  localStorage.setItem(CHAT_KEY,JSON.stringify(chatHistory));
+}catch(e){
+  alert('Не удалось сохранить историю разговора.');
+}
+
 
     if($('chatmessage').value.trim()===message){
       $('chatmessage').value='';
@@ -398,6 +420,16 @@ $('clear').onclick=()=>{
 
 load();
 render();
+  
+chatHistory.forEach(item=>{
+  chatBubble(
+    item.role==='user'?'me':'ai',
+    item.content
+  );
+});
+
+$('chatstatus').textContent='История разговора сохраняется на этом устройстве.';
+
 </script>
 </body>
 </html>
